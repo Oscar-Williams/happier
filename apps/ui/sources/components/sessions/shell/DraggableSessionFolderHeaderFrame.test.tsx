@@ -94,13 +94,19 @@ describe('DraggableSessionFolderHeaderFrame', () => {
         expect(onDropResult).toHaveBeenCalledOnce();
     });
 
-    it.each(['ios', 'android'] as const)('retains whole-header hold-to-drag on %s', async (platform) => {
+    it.each(['ios', 'android'] as const)('keeps hold-to-drag on the grip on %s and buttons outside the detector', async (platform) => {
         Platform.OS = platform;
-        const { screen, onDragStart } = await renderHeader();
-        const detector = screen.root.findByType('GestureDetector');
-        expect(detector.findAllByProps({ testID: 'header-button' }).length).toBeGreaterThan(0);
-        expect(screen.findByTestId('grip')).toBeNull();
-        const pan = findGestureByKind(detector.props.gesture, 'pan');
+        const { screen, onDragStart, onDropResult, onDragCancel, resolved } = await renderHeader();
+        // The row-level detector is gone (issue #691: its activation cancelled
+        // the presses of the header's own buttons), so the plain button renders
+        // outside any detector and the grip carries the gesture.
+        const detectors = screen.findAllByType('GestureDetector');
+        expect(detectors).toHaveLength(1);
+        expect(detectors[0]!.findAllByProps({ testID: 'header-button' })).toHaveLength(0);
+        const grip = screen.findByTestId('grip');
+        expect(grip).toBeTruthy();
+        const pan = findGestureByKind(detectors[0]!.props.gesture, 'pan');
+        expect(pan).toBeTruthy();
         expect(pan?.__config.activateAfterLongPress).toBe(350);
         await act(async () => {
             pan?.__handlers.onStart?.({});
@@ -109,6 +115,13 @@ describe('DraggableSessionFolderHeaderFrame', () => {
         expect(onDragStart).not.toHaveBeenCalled();
         await act(async () => { pan?.__handlers.onUpdate?.({ translationY: 20, absoluteX: 10, absoluteY: 40 }); });
         expect(onDragStart).toHaveBeenCalledWith('folder:folder-1');
+        await act(async () => {
+            pan?.__handlers.onEnd?.({ absoluteX: 10, absoluteY: 40 });
+            pan?.__handlers.onFinalize?.({});
+        });
+        expect(onDropResult).toHaveBeenCalledWith({ sessionKey: 'folder:folder-1', groupKey: 'group-1', dataIndex: 2, result: resolved.result });
+        expect(onDragCancel).not.toHaveBeenCalled();
+        await act(async () => { screen.findByTestId('header-button')?.props.onPress(); });
     });
 
     it('leaves a header without a drag identity interactive', async () => {

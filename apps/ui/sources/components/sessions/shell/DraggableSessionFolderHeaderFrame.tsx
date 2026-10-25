@@ -1,7 +1,6 @@
 import React from 'react';
 import { Platform, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { GestureDetector } from 'react-native-gesture-handler';
 
 import { type UseSessionInlineDragResult } from './useSessionInlineDrag';
 
@@ -26,6 +25,12 @@ import {
  * `activeDropVisual`. The single list-level `SessionListDropOverlay` owns the
  * line/outline. The header still registers its content bounds on layout for
  * the live geometry registry.
+ *
+ * The drag gesture is handed to the header and attaches to the reorder grip on
+ * every platform. It used to wrap the whole row on native; that detector
+ * activates after its hold delay even on a still finger, and Android has no
+ * cancelsTouchesInView to hand the touch back, so holding a header long enough
+ * to aim cancelled the presses of the header's own buttons (#691).
  */
 export const DraggableSessionFolderHeaderFrame = React.memo(function DraggableSessionFolderHeaderFrame(props: Readonly<{
     children: (dragHandleGesture: UseSessionInlineDragResult['gesture']) => React.ReactNode;
@@ -59,12 +64,12 @@ export const DraggableSessionFolderHeaderFrame = React.memo(function DraggableSe
         resolveDropResult: props.resolveDropResult,
         dataIndex: props.dataIndex,
         overlayShared: props.overlayShared,
-        // Native retains whole-header hold-to-drag. Web attaches only to the
-        // grip so pointer capture cannot swallow clicks on header buttons.
+        // Hold-to-drag on the grip so list scrolling keeps working; web drags
+        // from pointer movement instead.
         activateAfterLongPressMs: Platform.OS === 'web' ? undefined : 350,
     });
 
-    const content = (
+    return (
         <Animated.View
             ref={wrapperRef}
             collapsable={false}
@@ -72,11 +77,7 @@ export const DraggableSessionFolderHeaderFrame = React.memo(function DraggableSe
             style={animatedStyle}
             onLayout={() => props.onRegisterTreeRowBounds(props.treeRowId, wrapperRef.current)}
         >
-            {props.children(Platform.OS === 'web' ? gesture : undefined)}
+            {props.children(gesture)}
         </Animated.View>
     );
-
-    return Platform.OS !== 'web' && gesture
-        ? <GestureDetector gesture={gesture}>{content}</GestureDetector>
-        : content;
 });
